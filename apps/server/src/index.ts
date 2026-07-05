@@ -30,6 +30,15 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date() });
 });
 
+// Welcome route
+app.get("/", (req, res) => {
+  res.json({
+    message: "Welcome to the LinkCraft API server!",
+    health: "/health",
+    status: "online"
+  });
+});
+
 // Short URL Redirect Endpoint
 app.get("/:code", async (req, res): Promise<any> => {
   const { code } = req.params;
