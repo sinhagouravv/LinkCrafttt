@@ -244,7 +244,7 @@ export default function Home() {
               <div className="flex items-center gap-3">
                 <span className="text-sm text-slate-400 hidden sm:inline">{user.email}</span>
                 <Button onClick={logout} variant="outline" size="sm" className="border-slate-800 hover:bg-slate-900 text-slate-200">
-                  <LogOut className="w-4 h-4 mr-3" />
+                  <LogOut className="w-4 h-4 mr-2" />
                   Sign Out
                 </Button>
               </div>
