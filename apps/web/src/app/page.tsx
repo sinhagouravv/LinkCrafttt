@@ -305,7 +305,7 @@ export default function Home() {
             </span>
           </div>
 
-          <div className="flex items-center gap-7">
+          <div className="flex items-center gap-6">
             {user ? (
               <div className="flex items-center gap-3">
                 <span className="text-sm text-slate-400 hidden sm:inline">{user.email}</span>
