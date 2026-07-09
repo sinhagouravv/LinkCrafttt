@@ -65,6 +65,36 @@ const StarField = () => {
   return <canvas ref={canvasRef} className="absolute inset-0 z-0 opacity-60 pointer-events-none" />;
 };
 
+const getDomainBrand = (url: string, shortCode?: string): string => {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname; // e.g. "onlinecourses.nptel.ac.in"
+
+    if (hostname === "localhost") {
+      if (shortCode && typeof window !== "undefined") {
+        const savedBrand = localStorage.getItem(`brand:${shortCode}`);
+        if (savedBrand) return savedBrand;
+      }
+      return "localhost";
+    }
+
+    const parts = hostname.split(".");
+    if (parts.length <= 1) return hostname || "lnk";
+
+    // Common double TLDs to correctly identify primary brands
+    const doubleTlds = ["ac.in", "co.in", "org.in", "gov.in", "edu.in", "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk", "sch.uk", "gov.uk", "ac.uk", "org.nz", "co.nz", "co.jp", "ne.jp"];
+    const lastTwo = parts.slice(-2).join(".");
+
+    if (doubleTlds.includes(lastTwo) && parts.length >= 3) {
+      return parts[parts.length - 3];
+    } else {
+      return parts[parts.length - 2];
+    }
+  } catch {
+    return "lnk";
+  }
+};
+
 const API_BASE = "http://localhost:5005/api";
 const REDIRECT_BASE = "http://localhost:5005";
 
@@ -114,6 +144,8 @@ export default function Home() {
   const [createdUrl, setCreatedUrl] = useState<ShortURL | null>(null);
   const [error, setError] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [isShortening, setIsShortening] = useState(false);
+  const [shortenProgress, setShortenProgress] = useState(0);
 
   // Modal / Analytics state
   const [viewingAnalytics, setViewingAnalytics] = useState<UrlAnalytics | null>(null);
@@ -212,10 +244,40 @@ export default function Home() {
       return;
     }
 
+    let localhostBrand: string | null = null;
+    try {
+      const urlToTest = originalUrl.startsWith("http://") || originalUrl.startsWith("https://")
+        ? originalUrl
+        : `http://${originalUrl}`;
+      const parsed = new URL(urlToTest);
+      if (parsed.hostname === "localhost") {
+        localhostBrand = prompt("Enter a custom domain name/brand to display for this localhost link:");
+        if (localhostBrand === null) {
+          // Cancel execution if user cancels the prompt
+          return;
+        }
+      }
+    } catch {
+      // Let server validation handle malformed URLs
+    }
+
     const headers: HeadersInit = { "Content-Type": "application/json" };
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
+
+    setIsShortening(true);
+    setShortenProgress(0);
+
+    const progressInterval = setInterval(() => {
+      setShortenProgress((prev) => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
+        }
+        return prev + 10;
+      });
+    }, 80);
 
     try {
       const res = await fetch(`${API_BASE}/urls`, {
@@ -224,7 +286,19 @@ export default function Home() {
         body: JSON.stringify({ originalUrl, customCode }),
       });
       const json = await res.json();
+
+      clearInterval(progressInterval);
+      setShortenProgress(100);
+
+      setTimeout(() => {
+        setIsShortening(false);
+        setShortenProgress(0);
+      }, 300);
+
       if (json.success) {
+        if (localhostBrand && typeof window !== "undefined") {
+          localStorage.setItem(`brand:${json.data.shortCode}`, localhostBrand);
+        }
         setCreatedUrl(json.data);
         setOriginalUrl("");
         setCustomCode("");
@@ -235,6 +309,9 @@ export default function Home() {
         setError(json.error || "Failed to shorten URL");
       }
     } catch (e) {
+      clearInterval(progressInterval);
+      setIsShortening(false);
+      setShortenProgress(0);
       setError("Network error. Check server.");
     }
   };
@@ -376,9 +453,24 @@ export default function Home() {
 
                 {error && <p className="text-sm text-red-400">{error}</p>}
 
-                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium">
-                  Shorten Link
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                {isShortening && (
+                  <div className="space-y-1.5 pt-2">
+                    <div className="flex justify-between text-xs text-slate-400 font-mono">
+                      <span>Generating short link...</span>
+                      <span>{shortenProgress}%</span>
+                    </div>
+                    <div className="w-full bg-slate-950 border border-slate-800 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 h-full rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${shortenProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <Button type="submit" disabled={isShortening} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                  {isShortening ? "Creating Link..." : "Shorten Link"}
+                  {!isShortening && <ArrowRight className="w-4 h-4 ml-2" />}
                 </Button>
               </form>
 
@@ -393,7 +485,7 @@ export default function Home() {
                       rel="noopener noreferrer"
                       className="text-lg font-bold text-white hover:underline truncate"
                     >
-                      {REDIRECT_BASE.replace("http://", "")}/{createdUrl.shortCode}
+                      {getDomainBrand(createdUrl.originalUrl, createdUrl.shortCode)}/{createdUrl.shortCode}
                     </a>
                     <Button
                       onClick={() => copyToClipboard(`${REDIRECT_BASE}/${createdUrl.shortCode}`, "new-url")}
@@ -508,7 +600,7 @@ export default function Home() {
                           rel="noopener noreferrer"
                           className="font-bold text-white hover:underline truncate max-w-[200px]"
                         >
-                          /{url.shortCode}
+                          {getDomainBrand(url.originalUrl, url.shortCode)}/{url.shortCode}
                         </a>
                         <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                           <Button
@@ -557,7 +649,7 @@ export default function Home() {
           <Card className="max-w-2xl w-full border-slate-800 bg-slate-900 text-slate-100 max-h-[85vh] flex flex-col">
             <CardHeader className="border-b border-slate-800 flex flex-row items-center justify-between">
               <div>
-                <CardTitle className="text-xl">Analytics: /{viewingAnalytics.shortCode}</CardTitle>
+                <CardTitle className="text-xl">Analytics: {getDomainBrand(viewingAnalytics.originalUrl, viewingAnalytics.shortCode)}/{viewingAnalytics.shortCode}</CardTitle>
                 <CardDescription className="text-slate-400 truncate max-w-md">
                   Original: {viewingAnalytics.originalUrl}
                 </CardDescription>
